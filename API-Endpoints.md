@@ -88,6 +88,33 @@ curl -X POST -H "X-Admin-Key: $JELLYFIN_API_KEY" -H 'Content-Type: application/j
   http://proxy:8000/share
 ```
 
+### Pairing
+
+Lets the VRC Share Jellyfin plugin provide the admin key automatically
+instead of it being set by hand via `JELLYFIN_API_KEY`. Trust-on-first-use:
+`POST /pair` only succeeds while unpaired.
+
+```
+POST /pair
+```
+Body: `{"api_key": "<jellyfin-api-key>"}`. Returns `200` and adopts the key as
+the proxy's admin credential (also used to call Jellyfin's own API), or `409`
+if already paired.
+
+```
+DELETE /pair
+```
+Requires the current admin key (`X-Admin-Key` header or `admin_key` query
+param). Clears the pairing so a subsequent `POST /pair` is accepted again.
+
+```bash
+curl -X POST -H 'Content-Type: application/json' \
+  -d '{"api_key":"<jellyfin-api-key>"}' \
+  http://proxy:8000/pair
+
+curl -X DELETE -H "X-Admin-Key: $JELLYFIN_API_KEY" http://proxy:8000/pair
+```
+
 ### Get Segments
 ```
 GET /vod/{media_id}/{segment_path:path}  # VOD mode segments

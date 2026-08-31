@@ -364,6 +364,10 @@ PROFILES_FILE = Path(settings.cache_dir) / ".quality_profiles.json"
 shares: Dict[str, dict] = {}
 SHARES_FILE = Path(settings.cache_dir) / ".shares.json"
 
+# Auto-paired admin key storage (set via POST /pair, used when JELLYFIN_API_KEY
+# isn't provided as an env var) - see pair_admin_key()/clear_paired_admin_key()
+PAIRED_KEY_FILE = Path(settings.cache_dir) / ".paired_admin_key.json"
+
 # Startup recovery lock - prevents requests until recovery is complete
 startup_complete = asyncio.Event()
 
@@ -398,6 +402,37 @@ def prune_expired_shares() -> int:
     if expired:
         save_shares()
     return len(expired)
+
+
+def load_paired_admin_key() -> Optional[str]:
+    """Load an auto-paired admin key from persistent storage, if one exists"""
+    if not PAIRED_KEY_FILE.exists():
+        return None
+    try:
+        with open(PAIRED_KEY_FILE, 'r') as f:
+            return json.load(f).get('api_key') or None
+    except Exception as e:
+        print(f"Error loading paired admin key: {e}")
+        return None
+
+
+def pair_admin_key(api_key: str):
+    """Adopt an auto-generated admin key and persist it for future restarts"""
+    settings.jellyfin_api_key = api_key
+    try:
+        with open(PAIRED_KEY_FILE, 'w') as f:
+            json.dump({'api_key': api_key}, f)
+    except Exception as e:
+        print(f"Error saving paired admin key: {e}")
+
+
+def clear_paired_admin_key():
+    """Forget the current admin key so the proxy can be paired again"""
+    settings.jellyfin_api_key = ""
+    try:
+        PAIRED_KEY_FILE.unlink(missing_ok=True)
+    except Exception as e:
+        print(f"Error clearing paired admin key: {e}")
 
 
 def require_admin_key(request: Request):
@@ -538,8 +573,15 @@ async def startup_event():
     global custom_profiles, shares
 
     if not settings.jellyfin_api_key:
+        paired_key = load_paired_admin_key()
+        if paired_key:
+            settings.jellyfin_api_key = paired_key
+            print("Loaded auto-paired admin key from storage")
+
+    if not settings.jellyfin_api_key:
         print("WARNING: JELLYFIN_API_KEY is not set - admin/browsing endpoints and share creation are disabled. "
-              "Playback endpoints will refuse all requests until shares are created via /share with an admin key.")
+              "Playback endpoints will refuse all requests until shares are created via /share with an admin key, "
+              "or the plugin pairs one automatically via POST /pair.")
 
     # Load custom quality profiles
     custom_profiles = load_custom_profiles()
@@ -969,6 +1011,42 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+
+class PairRequest(BaseModel):
+    api_key: str
+
+
+@app.post("/pair")
+async def pair(body: PairRequest):
+    """
+    One-time pairing: adopt a Jellyfin API key pushed by the VRC Share plugin
+    as this proxy's admin key, so the admin doesn't have to manually copy the
+    same key into both the proxy's env var and the plugin's config page.
+
+    Trust-on-first-use: only accepted while unpaired (no JELLYFIN_API_KEY set
+    and no prior /pair call). Once paired, use DELETE /pair (which requires
+    the current admin key) to reset and allow pairing again.
+    """
+    if settings.jellyfin_api_key:
+        raise HTTPException(
+            status_code=409,
+            detail="Already paired - use DELETE /pair with the current admin key to re-pair"
+        )
+    if not body.api_key:
+        raise HTTPException(status_code=400, detail="api_key is required")
+
+    pair_admin_key(body.api_key)
+    print("Paired admin key via POST /pair")
+    return {"paired": True}
+
+
+@app.delete("/pair", dependencies=[Depends(require_admin_key)])
+async def unpair():
+    """Clear the current admin key so the proxy can be paired again"""
+    clear_paired_admin_key()
+    print("Cleared paired admin key via DELETE /pair")
+    return {"paired": False}
 
 
 @app.get("/manage", response_class=HTMLResponse)

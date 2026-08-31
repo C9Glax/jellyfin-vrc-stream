@@ -27,12 +27,31 @@
                         </div>
                     </div>
 
+                    <div class="verticalSection">
+                        <div id="PairStatus" class="fieldDescription">Checking pairing status...</div>
+                        <div>
+                            <button id="PairButton" is="emby-button" type="button" class="raised button-cancel block emby-button">
+                                <span>Pair</span>
+                            </button>
+                            <button id="RepairButton" is="emby-button" type="button" class="raised button-cancel block emby-button" hidden>
+                                <span>Re-pair</span>
+                            </button>
+                        </div>
+                        <div class="fieldDescription">
+                            Generates a Jellyfin API key and sends it to the proxy automatically - no need
+                            to create one by hand or paste it into two places. Save Proxy Base URL first.
+                            Use Re-pair to recover if the proxy's pairing was reset (e.g. after a restart
+                            with non-persistent storage) or to rotate the key.
+                        </div>
+                    </div>
+
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="AdminApiKey">Proxy Admin API Key</label>
+                        <label class="inputLabel inputLabelUnfocused" for="AdminApiKey">Proxy Admin API Key (advanced)</label>
                         <input id="AdminApiKey" name="AdminApiKey" type="password" is="emby-input" autocomplete="off" />
                         <div class="fieldDescription">
-                            Must match JELLYFIN_API_KEY configured on the proxy. Used server-side only -
-                            never sent to the browser.
+                            Set automatically by Pair/Re-pair above. Only edit this by hand if you're
+                            pointing at a key created outside this plugin - it must match JELLYFIN_API_KEY
+                            (or the proxy's paired key) exactly. Used server-side only - never sent to the browser.
                         </div>
                     </div>
 
@@ -69,6 +88,44 @@
                 pluginUniqueId: 'a3f1e6d2-8b4c-4e9a-9c3f-2d7a5b6e1234'
             };
 
+            function updatePairStatus(config) {
+                var status = document.querySelector('#PairStatus');
+                var pairButton = document.querySelector('#PairButton');
+                var repairButton = document.querySelector('#RepairButton');
+                var paired = !!config.AdminApiKey;
+                status.textContent = paired
+                    ? 'Paired with the proxy.'
+                    : (config.ProxyBaseUrl ? 'Not paired yet.' : 'Set Proxy Base URL, save, then pair.');
+                pairButton.hidden = paired;
+                repairButton.hidden = !paired;
+            }
+
+            function callPairEndpoint(action) {
+                Dashboard.showLoadingMsg();
+                ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('VrcShare/' + action),
+                    dataType: 'json'
+                }).then(function () {
+                    return ApiClient.getPluginConfiguration(VrcShareConfig.pluginUniqueId);
+                }).then(function (config) {
+                    document.querySelector('#AdminApiKey').value = config.AdminApiKey || '';
+                    updatePairStatus(config);
+                    Dashboard.hideLoadingMsg();
+                    Dashboard.alert(action + ' succeeded.');
+                }).catch(function (err) {
+                    Dashboard.hideLoadingMsg();
+                    Dashboard.alert(action + ' failed: ' + (err && err.statusText ? err.statusText : 'see server log'));
+                });
+            }
+
+            document.querySelector('#PairButton').addEventListener('click', function () {
+                callPairEndpoint('Pair');
+            });
+            document.querySelector('#RepairButton').addEventListener('click', function () {
+                callPairEndpoint('Repair');
+            });
+
             document.querySelector('#VrcShareConfigPage')
                 .addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
@@ -77,6 +134,7 @@
                         document.querySelector('#AdminApiKey').value = config.AdminApiKey || '';
                         document.querySelector('#DefaultTtlSeconds').value = config.DefaultTtlSeconds || 86400;
                         document.querySelector('#DisableScriptInjectionMiddleware').checked = !!config.DisableScriptInjectionMiddleware;
+                        updatePairStatus(config);
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -90,6 +148,7 @@
                         config.DefaultTtlSeconds = parseInt(document.querySelector('#DefaultTtlSeconds').value, 10) || 86400;
                         config.DisableScriptInjectionMiddleware = document.querySelector('#DisableScriptInjectionMiddleware').checked;
                         ApiClient.updatePluginConfiguration(VrcShareConfig.pluginUniqueId, config).then(function (result) {
+                            updatePairStatus(config);
                             Dashboard.processPluginConfigurationUpdateResult(result);
                         });
                     });

@@ -14,7 +14,9 @@ UI. Click it as an administrator and it:
 ## Requirements
 
 - Jellyfin 10.11.x
-- A jellyfin-vrc-stream proxy (this repo) with `JELLYFIN_API_KEY` set
+- A jellyfin-vrc-stream proxy (this repo), reachable from the Jellyfin server.
+  No manual key setup needed - the plugin pairs one automatically (see
+  [Configure](#configure)).
 
 ## Install via plugin repository (recommended)
 
@@ -51,17 +53,29 @@ The compiled plugin is at
 
 ## Configure
 
-1. On the proxy itself, make sure `JELLYFIN_API_KEY` is actually set (and the
-   proxy restarted) - if it isn't, every request to `/share` fails with
-   `401: Admin API key is not configured on the server`, regardless of what
-   the plugin sends.
-2. In the admin dashboard, go to **Plugins → VRC Share** and set:
+1. In the admin dashboard, go to **Plugins → VRC Share** and set:
    - **Proxy Base URL** - e.g. `https://stream.example.com`
-   - **Proxy Admin API Key** - must match `JELLYFIN_API_KEY` on the proxy exactly
    - **Default link lifetime** - defaults to 86400 seconds (24h)
+   - Save.
+2. Click **Pair**. The plugin mints a Jellyfin API key itself and sends it to
+   the proxy - no need to visit Dashboard → API Keys or set
+   `JELLYFIN_API_KEY` by hand. If the proxy's pairing was reset (e.g. it
+   restarted with non-persistent cache storage) or you want to rotate the
+   key, click **Re-pair** instead.
 3. Open any movie or episode as an administrator - a headset icon button
    appears next to Play. Click it, then paste the copied URL into your VRChat
    video player.
+
+### Advanced / manual pairing
+
+If you'd rather manage the key yourself (e.g. it's shared with another
+integration, or you're on a proxy version that predates pairing):
+
+1. Create an API key in Jellyfin's own **Dashboard → API Keys**, and set it
+   as `JELLYFIN_API_KEY` on the proxy (restart the proxy afterward) - see
+   [Container-Configuration.md](../Container-Configuration.md).
+2. Paste the same value into the plugin's **Proxy Admin API Key (advanced)**
+   field and save. This overrides whatever Pair/Re-pair set.
 
 ## How the button gets injected
 
