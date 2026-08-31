@@ -1,15 +1,16 @@
 name: "🚀 Release VRC Share Plugin"
 
-# Triggered by pushing a tag like "plugin-v1.0.0.0" - separate from the
-# proxy's own Docker release tags (vX.Y.Z) so the two never trigger each
-# other. Builds the plugin, creates the GitHub Release for the tag (with the
-# zip attached), and appends the new version to manifest.json so it shows up
-# for anyone who has added this repo's manifest.json URL as a Jellyfin
-# plugin repository.
+# Triggered by pushing a tag like "v1.0.0" - the same tag that triggers
+# docker-release.yaml, so one tag push releases both the Docker image and the
+# plugin together. Jellyfin plugin versions need 4 numeric components, so a
+# ".0" is appended to the 3-part tag version (e.g. v1.0.0 -> 1.0.0.0). Builds
+# the plugin, creates the GitHub Release for the tag (with the zip attached),
+# and appends the new version to manifest.json so it shows up for anyone who
+# has added this repo's manifest.json URL as a Jellyfin plugin repository.
 on:
   push:
     tags:
-      - "plugin-v*"
+      - "v*.*.*"
 
 permissions:
   contents: write
@@ -37,7 +38,8 @@ jobs:
         env:
           REF_NAME: ${{ github.ref_name }}
         run: |
-          VERSION="${REF_NAME#plugin-v}"
+          TAG_VERSION="${REF_NAME#v}"
+          VERSION="${TAG_VERSION}.0"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Set assembly version

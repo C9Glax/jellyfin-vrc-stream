@@ -84,14 +84,19 @@ keep working regardless.
 
 1. Bump the version however you like (the release workflow overwrites
    `AssemblyVersion`/`FileVersion` in the `.csproj` from the tag anyway).
-2. Create and push a tag named `plugin-vX.Y.Z.W`, e.g.:
+2. Create and push a tag named `vX.Y.Z`, e.g.:
    ```bash
-   git tag plugin-v1.1.0.0
-   git push origin plugin-v1.1.0.0
+   git tag v1.1.0
+   git push origin v1.1.0
    ```
-   That's it - no manual "Publish release" step needed.
+   That's it - no manual "Publish release" step needed. This is the same tag
+   that triggers the Docker image release
+   ([`docker-release.yaml`](../.github/workflows/docker-release.yaml)), so one
+   tag push releases both together.
 3. [`plugin-vrc-share-release.yaml`](../.github/workflows/plugin-vrc-share-release.yaml)
    builds the plugin, creates the GitHub Release for that tag (with
-   auto-generated notes) with `Jellyfin.Plugin.VrcShare_X.Y.Z.W.zip`
+   auto-generated notes) with `Jellyfin.Plugin.VrcShare_X.Y.Z.0.zip`
    attached, and commits a new entry to `manifest.json` - anyone with this
-   repository added in Jellyfin sees the update automatically.
+   repository added in Jellyfin sees the update automatically. Jellyfin plugin
+   versions need 4 numeric components, so the workflow appends `.0` to the
+   tag version (e.g. `v1.1.0` -> plugin version `1.1.0.0`).
