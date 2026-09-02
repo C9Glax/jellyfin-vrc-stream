@@ -10,6 +10,23 @@
     // been stable across jellyfin-web releases for a long time - the
     // overflow menu's internal item list is more likely to change shape.
 
+    // jellyfin-web's legacy view router (src/components/viewContainer.js)
+    // keeps a round-robin pool of exactly 3 page DOM slots
+    // (`pageContainerCount = 3`), shared across every route, not just
+    // details pages. Navigating replaces the DOM in the next slot in
+    // rotation and only toggles a `.hide` class - it never removes old
+    // pooled pages from the document. That means up to 3 `.mainDetailButtons`
+    // elements (one per slot) can be present in the DOM at once, most of
+    // them belonging to a page that isn't currently shown. A plain
+    // `document.querySelector('.mainDetailButtons')` returns whichever one
+    // happens to come first in document order - which is only the visible
+    // page 1 time in 3, since slots keep a fixed DOM position across
+    // rotations. Scope every lookup to the one page slot that's actually
+    // visible (`.mainAnimatedPage:not(.hide)`) instead.
+    function getActiveMainDetailButtons() {
+        return document.querySelector('.mainAnimatedPage:not(.hide) .mainDetailButtons');
+    }
+
     function getItemIdFromHash() {
         var match = window.location.hash.match(/[?&]id=([a-f0-9-]+)/i);
         return match ? match[1] : null;
@@ -136,7 +153,7 @@
             return;
         }
 
-        var container = document.querySelector('.mainDetailButtons');
+        var container = getActiveMainDetailButtons();
         if (!container) {
             return;
         }
@@ -166,7 +183,7 @@
             if (!isDetailsPage() || getItemIdFromHash() !== itemId) {
                 return;
             }
-            var freshContainer = document.querySelector('.mainDetailButtons');
+            var freshContainer = getActiveMainDetailButtons();
             if (!freshContainer) {
                 return;
             }
