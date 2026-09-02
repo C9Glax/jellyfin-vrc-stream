@@ -134,9 +134,19 @@
             if (!user || !user.Policy || !user.Policy.IsAdministrator) {
                 return;
             }
-            // Re-check in case of a race with another invocation while the
-            // user lookup was in flight.
-            var current = container.querySelector('.btnVrcShare');
+            // The details view can be torn down and rebuilt - or navigated
+            // away from entirely - while this lookup was in flight. Bail out
+            // rather than act on a container/item that's no longer current;
+            // whatever invocation is now responsible for the visible item
+            // will run its own check.
+            if (!isDetailsPage() || getItemIdFromHash() !== itemId) {
+                return;
+            }
+            var freshContainer = document.querySelector('.mainDetailButtons');
+            if (!freshContainer) {
+                return;
+            }
+            var current = freshContainer.querySelector('.btnVrcShare');
             if (current) {
                 if (current.dataset.itemId === itemId) {
                     return;
@@ -144,11 +154,11 @@
                 current.parentNode.removeChild(current);
             }
             var button = buildButton(itemId);
-            var moreCommandsBtn = container.querySelector('.btnMoreCommands');
+            var moreCommandsBtn = freshContainer.querySelector('.btnMoreCommands');
             if (moreCommandsBtn) {
-                container.insertBefore(button, moreCommandsBtn);
+                freshContainer.insertBefore(button, moreCommandsBtn);
             } else {
-                container.appendChild(button);
+                freshContainer.appendChild(button);
             }
         }).catch(function () {
             // Not logged in yet, or request failed - just don't show the button.
@@ -160,23 +170,24 @@
     // episode to episode) reuses the same view instance and updates it in
     // place without firing 'viewshow'. A MutationObserver on the button row
     // reacts to that in-place re-render directly, instead of guessing when
-    // it's finished with a fixed delay.
-    var pendingCheck = null;
-
-    function scheduleAddButtonIfNeeded() {
-        if (pendingCheck !== null) {
-            return;
+    // it's finished with a fixed delay. It's the only mechanism that catches
+    // this case, so it re-checks on every batch that actually changed the
+    // DOM rather than debouncing to a single guess: the button row can take
+    // more than one render pass to appear, and a guess that fires before the
+    // last pass would otherwise never get a second chance.
+    function onBodyMutation(mutations) {
+        for (var i = 0; i < mutations.length; i++) {
+            if (mutations[i].addedNodes.length > 0 || mutations[i].removedNodes.length > 0) {
+                addButtonIfNeeded();
+                return;
+            }
         }
-        pendingCheck = setTimeout(function () {
-            pendingCheck = null;
-            addButtonIfNeeded();
-        }, 50);
     }
 
     document.addEventListener('viewshow', addButtonIfNeeded);
     window.addEventListener('hashchange', addButtonIfNeeded);
 
-    new MutationObserver(scheduleAddButtonIfNeeded).observe(document.body, {
+    new MutationObserver(onBodyMutation).observe(document.body, {
         childList: true,
         subtree: true
     });
