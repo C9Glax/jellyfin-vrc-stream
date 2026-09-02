@@ -32,6 +32,7 @@
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'button-flat btnVrcShare detailButton emby-button';
+        btn.dataset.itemId = itemId;
         btn.title = 'Create a time-limited VRChat share link';
         btn.innerHTML =
             '<div class="detailButton-content">' + HEAD_MOUNTED_DEVICE_SVG + '</div>';
@@ -108,8 +109,21 @@
         }
 
         var container = document.querySelector('.mainDetailButtons');
-        if (!container || container.querySelector('.btnVrcShare')) {
+        if (!container) {
             return;
+        }
+
+        // The button row can survive an in-place navigation to a sibling
+        // item (e.g. episode to episode) without being torn down, so a
+        // present button isn't necessarily for the item now shown - only
+        // skip if it's already tagged with the current item's id. Otherwise
+        // drop the stale one and fall through to add a fresh one below.
+        var existing = container.querySelector('.btnVrcShare');
+        if (existing) {
+            if (existing.dataset.itemId === itemId) {
+                return;
+            }
+            existing.parentNode.removeChild(existing);
         }
 
         if (!window.ApiClient || typeof window.ApiClient.getCurrentUser !== 'function') {
@@ -122,8 +136,12 @@
             }
             // Re-check in case of a race with another invocation while the
             // user lookup was in flight.
-            if (container.querySelector('.btnVrcShare')) {
-                return;
+            var current = container.querySelector('.btnVrcShare');
+            if (current) {
+                if (current.dataset.itemId === itemId) {
+                    return;
+                }
+                current.parentNode.removeChild(current);
             }
             var button = buildButton(itemId);
             var moreCommandsBtn = container.querySelector('.btnMoreCommands');
@@ -137,12 +155,29 @@
         });
     }
 
-    // jellyfin-web fires 'viewshow' on navigation between SPA views. Also
-    // poll briefly on hash changes as a fallback, since detail pages can
-    // finish rendering their button row slightly after the view event.
+    // jellyfin-web fires 'viewshow' on navigation between SPA views, but
+    // navigating between two items that both use the details view (e.g.
+    // episode to episode) reuses the same view instance and updates it in
+    // place without firing 'viewshow'. A MutationObserver on the button row
+    // reacts to that in-place re-render directly, instead of guessing when
+    // it's finished with a fixed delay.
+    var pendingCheck = null;
+
+    function scheduleAddButtonIfNeeded() {
+        if (pendingCheck !== null) {
+            return;
+        }
+        pendingCheck = setTimeout(function () {
+            pendingCheck = null;
+            addButtonIfNeeded();
+        }, 50);
+    }
+
     document.addEventListener('viewshow', addButtonIfNeeded);
-    window.addEventListener('hashchange', function () {
-        setTimeout(addButtonIfNeeded, 300);
-        setTimeout(addButtonIfNeeded, 1000);
+    window.addEventListener('hashchange', addButtonIfNeeded);
+
+    new MutationObserver(scheduleAddButtonIfNeeded).observe(document.body, {
+        childList: true,
+        subtree: true
     });
 })();
