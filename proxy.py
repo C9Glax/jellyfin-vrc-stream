@@ -368,6 +368,17 @@ SHARES_FILE = Path(settings.cache_dir) / ".shares.json"
 # isn't provided as an env var) - see pair_admin_key()/clear_paired_admin_key()
 PAIRED_KEY_FILE = Path(settings.cache_dir) / ".paired_admin_key.json"
 
+# Runtime-editable cache/timeout settings storage (set via PUT /settings) -
+# overrides the env var defaults above and persists across restarts, mirroring
+# the paired admin key.
+SETTINGS_FILE = Path(settings.cache_dir) / ".runtime_settings.json"
+RUNTIME_SETTINGS_FIELDS = (
+    "stream_idle_timeout",
+    "locked_stream_idle_timeout",
+    "cleanup_interval",
+    "max_cache_size_mb",
+)
+
 # Startup recovery lock - prevents requests until recovery is complete
 startup_complete = asyncio.Event()
 
@@ -424,6 +435,27 @@ def pair_admin_key(api_key: str):
             json.dump({'api_key': api_key}, f)
     except Exception as e:
         print(f"Error saving paired admin key: {e}")
+
+
+def load_runtime_settings() -> Optional[dict]:
+    """Load persisted cache/timeout setting overrides, if any exist"""
+    if not SETTINGS_FILE.exists():
+        return None
+    try:
+        with open(SETTINGS_FILE, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading runtime settings: {e}")
+        return None
+
+
+def save_runtime_settings():
+    """Persist the current cache/timeout settings so they survive restarts"""
+    try:
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump({field: getattr(settings, field) for field in RUNTIME_SETTINGS_FIELDS}, f, indent=2)
+    except Exception as e:
+        print(f"Error saving runtime settings: {e}")
 
 
 def clear_paired_admin_key():
@@ -582,6 +614,14 @@ async def startup_event():
         print("WARNING: JELLYFIN_API_KEY is not set - admin/browsing endpoints and share creation are disabled. "
               "Playback endpoints will refuse all requests until shares are created via /share with an admin key, "
               "or the plugin pairs one automatically via POST /pair.")
+
+    # Load persisted cache/timeout setting overrides (from PUT /settings), if any
+    runtime_settings = load_runtime_settings()
+    if runtime_settings:
+        for field in RUNTIME_SETTINGS_FIELDS:
+            if field in runtime_settings:
+                setattr(settings, field, runtime_settings[field])
+        print("Loaded persisted cache/timeout settings from storage")
 
     # Load custom quality profiles
     custom_profiles = load_custom_profiles()
@@ -1893,6 +1933,42 @@ async def manual_cleanup():
         "removed_size": removed_size,
         "cache_size_mb": round(get_cache_size_mb(), 2)
     }
+
+
+class RuntimeSettings(BaseModel):
+    """Cache/timeout settings that can be changed at runtime (see Settings)"""
+    stream_idle_timeout: int
+    locked_stream_idle_timeout: int
+    cleanup_interval: int
+    max_cache_size_mb: int
+
+
+@app.get("/settings", dependencies=[Depends(require_admin_key)])
+async def get_settings():
+    """Get the current cache/timeout settings"""
+    return {field: getattr(settings, field) for field in RUNTIME_SETTINGS_FIELDS}
+
+
+@app.put("/settings", dependencies=[Depends(require_admin_key)])
+async def update_settings(new_settings: RuntimeSettings):
+    """Update cache/timeout settings and persist them across restarts.
+
+    Note: flipping cleanup_interval from 0 to a nonzero value here does not
+    retroactively start the cleanup task - that's only kicked off once at
+    startup. All other changes (including between two nonzero
+    cleanup_interval values) take effect immediately, since the cleanup
+    loop and cache eviction logic read settings.* live on every iteration.
+    """
+    for field in RUNTIME_SETTINGS_FIELDS:
+        value = getattr(new_settings, field)
+        if value < 0:
+            raise HTTPException(status_code=400, detail=f"{field} must be >= 0")
+
+    for field in RUNTIME_SETTINGS_FIELDS:
+        setattr(settings, field, getattr(new_settings, field))
+    save_runtime_settings()
+
+    return {field: getattr(settings, field) for field in RUNTIME_SETTINGS_FIELDS}
 
 
 @app.get("/profiles", dependencies=[Depends(require_admin_key)])

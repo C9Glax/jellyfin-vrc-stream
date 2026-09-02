@@ -4,7 +4,9 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Reflection;
+using System.Text.Json;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.VrcShare.Configuration;
 using MediaBrowser.Common.Api;
 using MediaBrowser.Controller.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -84,15 +86,12 @@ public class VrcShareController : ControllerBase
             return BadRequest("itemId is required");
         }
 
-        var config = Plugin.Instance?.Configuration;
-        if (config == null || string.IsNullOrWhiteSpace(config.ProxyBaseUrl) || string.IsNullOrWhiteSpace(config.AdminApiKey))
+        var configError = RequireConfig(out var config);
+        if (configError != null)
         {
-            return Problem(
-                "VRC Share plugin is not configured. Set Proxy Base URL and Admin API Key on the plugin's settings page.",
-                statusCode: 500);
+            return configError;
         }
 
-        var client = _httpClientFactory.CreateClient();
         var payload = new
         {
             media_id = itemId,
@@ -100,31 +99,7 @@ public class VrcShareController : ControllerBase
             ttl_seconds = ttlSeconds ?? config.DefaultTtlSeconds
         };
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"{config.ProxyBaseUrl.TrimEnd('/')}/share")
-        {
-            Content = JsonContent.Create(payload)
-        };
-        request.Headers.Add("X-Admin-Key", config.AdminApiKey);
-
-        HttpResponseMessage response;
-        try
-        {
-            response = await client.SendAsync(request).ConfigureAwait(false);
-        }
-        catch (HttpRequestException ex)
-        {
-            return Problem($"Failed to reach the proxy at {config.ProxyBaseUrl}: {ex.Message}", statusCode: 502);
-        }
-
-        var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-        {
-            return Problem($"Proxy returned {(int)response.StatusCode}: {body}", statusCode: 502);
-        }
-
-        // Pass the proxy's JSON straight through - no need to re-model it here,
-        // and this keeps the two sides from drifting out of sync on field names.
-        return Content(body, "application/json");
+        return await ProxyForwardAsync(config, HttpMethod.Post, "share", JsonContent.Create(payload)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -139,10 +114,10 @@ public class VrcShareController : ControllerBase
     [Authorize(Policy = Policies.RequiresElevation)]
     public async Task<ActionResult> Pair()
     {
-        var config = Plugin.Instance?.Configuration;
-        if (config == null || string.IsNullOrWhiteSpace(config.ProxyBaseUrl))
+        var configError = RequireConfig(out var config, requireAdminKey: false, notConfiguredMessage: "Set Proxy Base URL before pairing.");
+        if (configError != null)
         {
-            return Problem("Set Proxy Base URL before pairing.", statusCode: 500);
+            return configError;
         }
 
         string accessToken;
@@ -201,10 +176,10 @@ public class VrcShareController : ControllerBase
     [Authorize(Policy = Policies.RequiresElevation)]
     public async Task<ActionResult> Repair()
     {
-        var config = Plugin.Instance?.Configuration;
-        if (config == null || string.IsNullOrWhiteSpace(config.ProxyBaseUrl) || string.IsNullOrWhiteSpace(config.AdminApiKey))
+        var configError = RequireConfig(out var config, notConfiguredMessage: "Pair once before using Re-pair.");
+        if (configError != null)
         {
-            return Problem("Pair once before using Re-pair.", statusCode: 500);
+            return configError;
         }
 
         var client = _httpClientFactory.CreateClient();
@@ -231,6 +206,185 @@ public class VrcShareController : ControllerBase
         }
 
         return await Pair().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Gets the proxy's current cache/timeout settings (stream idle timeout,
+    /// locked stream idle timeout, cleanup interval, max cache size) via the
+    /// proxy's GET /settings endpoint.
+    /// </summary>
+    /// <returns>The proxy's JSON response.</returns>
+    [HttpGet("Settings")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public async Task<ActionResult> GetSettings()
+    {
+        var configError = RequireConfig(out var config);
+        if (configError != null)
+        {
+            return configError;
+        }
+
+        return await ProxyForwardAsync(config, HttpMethod.Get, "settings").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Updates the proxy's cache/timeout settings via the proxy's PUT
+    /// /settings endpoint. The request body is forwarded to the proxy as-is.
+    /// </summary>
+    /// <param name="body">The new settings, matching the proxy's RuntimeSettings shape.</param>
+    /// <returns>The proxy's JSON response.</returns>
+    [HttpPut("Settings")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public async Task<ActionResult> UpdateSettings([FromBody] JsonElement body)
+    {
+        var configError = RequireConfig(out var config);
+        if (configError != null)
+        {
+            return configError;
+        }
+
+        return await ProxyForwardAsync(config, HttpMethod.Put, "settings", JsonContent.Create(body)).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Lists the proxy's quality profiles (built-in presets and custom) via
+    /// the proxy's GET /profiles endpoint.
+    /// </summary>
+    /// <returns>The proxy's JSON response.</returns>
+    [HttpGet("Profiles")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public async Task<ActionResult> GetProfiles()
+    {
+        var configError = RequireConfig(out var config);
+        if (configError != null)
+        {
+            return configError;
+        }
+
+        return await ProxyForwardAsync(config, HttpMethod.Get, "profiles").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Creates a new custom quality profile via the proxy's POST /profiles
+    /// endpoint. The request body is forwarded to the proxy as-is.
+    /// </summary>
+    /// <param name="body">The new profile, matching the proxy's QualityProfile shape.</param>
+    /// <returns>The proxy's JSON response.</returns>
+    [HttpPost("Profiles")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public async Task<ActionResult> CreateProfile([FromBody] JsonElement body)
+    {
+        var configError = RequireConfig(out var config);
+        if (configError != null)
+        {
+            return configError;
+        }
+
+        return await ProxyForwardAsync(config, HttpMethod.Post, "profiles", JsonContent.Create(body)).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Updates an existing custom quality profile via the proxy's PUT
+    /// /profiles/{id} endpoint. The request body is forwarded to the proxy as-is.
+    /// </summary>
+    /// <param name="profileId">ID of the custom profile to update.</param>
+    /// <param name="body">The updated profile, matching the proxy's QualityProfile shape.</param>
+    /// <returns>The proxy's JSON response.</returns>
+    [HttpPut("Profiles/{profileId}")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public async Task<ActionResult> UpdateProfile([FromRoute] string profileId, [FromBody] JsonElement body)
+    {
+        var configError = RequireConfig(out var config);
+        if (configError != null)
+        {
+            return configError;
+        }
+
+        return await ProxyForwardAsync(config, HttpMethod.Put, $"profiles/{Uri.EscapeDataString(profileId)}", JsonContent.Create(body)).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Deletes a custom quality profile via the proxy's DELETE /profiles/{id}
+    /// endpoint.
+    /// </summary>
+    /// <param name="profileId">ID of the custom profile to delete.</param>
+    /// <returns>The proxy's JSON response.</returns>
+    [HttpDelete("Profiles/{profileId}")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public async Task<ActionResult> DeleteProfile([FromRoute] string profileId)
+    {
+        var configError = RequireConfig(out var config);
+        if (configError != null)
+        {
+            return configError;
+        }
+
+        return await ProxyForwardAsync(config, HttpMethod.Delete, $"profiles/{Uri.EscapeDataString(profileId)}").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Validates that the plugin is configured enough to call the proxy, and
+    /// hands back the configuration to use.
+    /// </summary>
+    /// <param name="config">The plugin's current configuration, if valid.</param>
+    /// <param name="requireAdminKey">Whether <see cref="PluginConfiguration.AdminApiKey"/> must also be set.</param>
+    /// <param name="notConfiguredMessage">Error message to return when validation fails.</param>
+    /// <returns>An error <see cref="ActionResult"/> if validation failed, otherwise null.</returns>
+    private ActionResult? RequireConfig(
+        out PluginConfiguration config,
+        bool requireAdminKey = true,
+        string notConfiguredMessage = "VRC Share plugin is not configured. Set Proxy Base URL and Admin API Key on the plugin's settings page.")
+    {
+        config = Plugin.Instance?.Configuration!;
+        if (Plugin.Instance?.Configuration == null
+            || string.IsNullOrWhiteSpace(config.ProxyBaseUrl)
+            || (requireAdminKey && string.IsNullOrWhiteSpace(config.AdminApiKey)))
+        {
+            return Problem(notConfiguredMessage, statusCode: 500);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Forwards a request to the jellyfin-vrc-stream proxy with the admin key
+    /// attached, passing the proxy's raw JSON response straight through - no
+    /// need to re-model it here, and it keeps the two sides from drifting out
+    /// of sync on field names.
+    /// </summary>
+    /// <param name="config">Plugin configuration providing the proxy base URL and admin key.</param>
+    /// <param name="method">HTTP method to use.</param>
+    /// <param name="path">Path (without leading slash) relative to the proxy base URL.</param>
+    /// <param name="content">Optional request body to forward.</param>
+    /// <returns>The proxy's response, passed through, or a <see cref="Problem"/> result on failure.</returns>
+    private async Task<ActionResult> ProxyForwardAsync(PluginConfiguration config, HttpMethod method, string path, HttpContent? content = null)
+    {
+        var client = _httpClientFactory.CreateClient();
+        using var request = new HttpRequestMessage(method, $"{config.ProxyBaseUrl.TrimEnd('/')}/{path.TrimStart('/')}");
+        if (content != null)
+        {
+            request.Content = content;
+        }
+
+        request.Headers.Add("X-Admin-Key", config.AdminApiKey);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await client.SendAsync(request).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex)
+        {
+            return Problem($"Failed to reach the proxy at {config.ProxyBaseUrl}: {ex.Message}", statusCode: 502);
+        }
+
+        var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            return Problem($"Proxy returned {(int)response.StatusCode}: {body}", statusCode: 502);
+        }
+
+        return Content(body, "application/json");
     }
 
     /// <summary>

@@ -8,18 +8,30 @@
 | `PUBLIC_BASE_URL` | External base URL used to build share link URLs | (falls back to request base URL) |
 | `DEFAULT_SHARE_TTL_SECONDS` | Default share link lifetime in seconds | `86400` (24h) |
 | `STREAM_IDLE_TIMEOUT` | Cleanup streams idle for N seconds (0=disable) | `300` (5 min) |
+| `LOCKED_STREAM_IDLE_TIMEOUT` | Same, but for streams locked to stay warm (see `/streams/{key}/lock`) | `86400` (24h) |
 | `CLEANUP_INTERVAL` | Run cleanup every N seconds (0=disable) | `60` |
 | `MAX_CACHE_SIZE_MB` | Max cache size in MB (0=disable) | `1800` (1.8 GB) |
-| **Quality Settings** | | |
-| `VIDEO_BITRATE` | Video bitrate in bits/sec | `40000000` (40 Mbps) |
-| `AUDIO_BITRATE` | Audio bitrate in bits/sec | `320000` (320 Kbps) |
-| `MAX_STREAMING_BITRATE` | Total bitrate cap in bits/sec | `50000000` (50 Mbps) |
-| `MAX_WIDTH` | Maximum video width | `1920` |
-| `MAX_HEIGHT` | Maximum video height | `1080` |
-| `MAX_FRAMERATE` | Maximum framerate | `60` |
-| `H264_PROFILE` | H.264 profile (baseline/main/high) | `high` |
-| `H264_LEVEL` | H.264 level (41=1080p30, 42=1080p60) | `41` |
-| `MAX_REF_FRAMES` | Reference frames for motion quality | `4` |
+
+`STREAM_IDLE_TIMEOUT`, `LOCKED_STREAM_IDLE_TIMEOUT`, `CLEANUP_INTERVAL` and
+`MAX_CACHE_SIZE_MB` are just the initial defaults - they can be changed at
+runtime via `GET`/`PUT /settings` (admin-key protected, same as `/profiles`
+below), including from the VRC Share plugin's config page. A change made
+this way is persisted to `.runtime_settings.json` in `CACHE_DIR` and
+overrides the env vars above on every subsequent restart, so it needs the
+same durable-storage caveat as the paired admin key (see below) to survive a
+restart. Switching `CLEANUP_INTERVAL` from `0` to a positive value this way
+still requires a restart to actually start the cleanup task; other changes
+take effect immediately.
+
+## Encoding / quality settings
+
+Encoding is not configured via environment variables. It's a set of named
+quality profiles (built-in presets plus any custom ones you create) managed
+through the `/profiles` REST API (`GET`/`POST`/`PUT`/`DELETE`, admin-key
+protected) or the VRC Share plugin's config page, which lists, creates,
+edits and deletes them for you. Each profile carries `video_bitrate`,
+`audio_bitrate`, `max_streaming_bitrate`, `max_width`, `max_height`,
+`max_framerate`, `h264_profile`, `h264_level` and `max_ref_frames`.
 
 ## Pairing instead of manually setting `JELLYFIN_API_KEY`
 
