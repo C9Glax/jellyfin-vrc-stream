@@ -32,6 +32,11 @@ protected) or the VRC Share plugin's config page, which lists, creates,
 edits and deletes them for you. Each profile carries `video_bitrate`,
 `audio_bitrate`, `max_streaming_bitrate`, `max_width`, `max_height`,
 `max_framerate`, `h264_profile`, `h264_level` and `max_ref_frames`.
+Playback and `POST /share` both accept an optional `profile` (ID); if
+omitted, playback falls back to `"high"`. The plugin's config page has a
+"Default quality profile" dropdown (populated from `/profiles` once paired)
+that picks which one it requests when minting share links via its "VR Share
+Link" button.
 
 ## Pairing instead of manually setting `JELLYFIN_API_KEY`
 

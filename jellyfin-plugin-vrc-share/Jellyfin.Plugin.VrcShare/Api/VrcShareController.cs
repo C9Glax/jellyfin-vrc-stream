@@ -73,13 +73,15 @@ public class VrcShareController : ControllerBase
     /// <param name="itemId">Jellyfin media item ID to share.</param>
     /// <param name="mode">"vod" or "live" (defaults to "vod").</param>
     /// <param name="ttlSeconds">Optional link lifetime override in seconds.</param>
+    /// <param name="profile">Optional quality profile ID override; defaults to the plugin's configured <see cref="PluginConfiguration.DefaultQualityProfile"/>.</param>
     /// <returns>The proxy's JSON response, containing the share URL and expiry.</returns>
     [HttpPost("CreateLink")]
     [Authorize(Policy = Policies.RequiresElevation)]
     public async Task<ActionResult> CreateLink(
         [FromQuery] string itemId,
         [FromQuery] string mode = "vod",
-        [FromQuery] int? ttlSeconds = null)
+        [FromQuery] int? ttlSeconds = null,
+        [FromQuery] string? profile = null)
     {
         if (string.IsNullOrWhiteSpace(itemId))
         {
@@ -92,11 +94,13 @@ public class VrcShareController : ControllerBase
             return configError;
         }
 
+        var effectiveProfile = string.IsNullOrWhiteSpace(profile) ? config.DefaultQualityProfile : profile;
         var payload = new
         {
             media_id = itemId,
             mode,
-            ttl_seconds = ttlSeconds ?? config.DefaultTtlSeconds
+            ttl_seconds = ttlSeconds ?? config.DefaultTtlSeconds,
+            profile = string.IsNullOrWhiteSpace(effectiveProfile) ? null : effectiveProfile
         };
 
         return await ProxyForwardAsync(config, HttpMethod.Post, "share", JsonContent.Create(payload)).ConfigureAwait(false);

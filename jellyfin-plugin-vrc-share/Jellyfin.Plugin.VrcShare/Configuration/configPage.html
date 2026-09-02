@@ -5,7 +5,7 @@
 </head>
 <body>
     <div id="VrcShareConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
-         data-require="emby-input,emby-button,emby-checkbox">
+         data-require="emby-input,emby-button,emby-checkbox,emby-select">
         <div data-role="content">
             <div class="content-primary">
                 <form id="VrcShareConfigForm">
@@ -60,6 +60,18 @@
                         <input id="DefaultTtlSeconds" name="DefaultTtlSeconds" type="number" min="60" is="emby-input" />
                         <div class="fieldDescription">
                             How long a share link stays valid by default (e.g. 86400 = 24 hours).
+                        </div>
+                    </div>
+
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="DefaultQualityProfile">Default quality profile</label>
+                        <select id="DefaultQualityProfile" name="DefaultQualityProfile" is="emby-select">
+                            <option value="">(proxy default - "high")</option>
+                        </select>
+                        <div class="fieldDescription">
+                            Quality profile used when minting share links. Populated from the proxy
+                            once paired - see Quality Profiles below to add more. Pair first, then
+                            reload this page to pick from the full list.
                         </div>
                     </div>
 
@@ -201,7 +213,8 @@
 
         <script type="text/javascript">
             var VrcShareConfig = {
-                pluginUniqueId: 'a3f1e6d2-8b4c-4e9a-9c3f-2d7a5b6e1234'
+                pluginUniqueId: 'a3f1e6d2-8b4c-4e9a-9c3f-2d7a5b6e1234',
+                defaultQualityProfile: ''
             };
 
             function updatePairStatus(config) {
@@ -377,6 +390,25 @@
                 container.appendChild(table);
             }
 
+            function populateDefaultProfileSelect(profiles, selectedId) {
+                var select = document.querySelector('#DefaultQualityProfile');
+                select.innerHTML = '';
+
+                var defaultOption = document.createElement('option');
+                defaultOption.value = '';
+                defaultOption.textContent = '(proxy default - "high")';
+                select.appendChild(defaultOption);
+
+                profiles.forEach(function (profile) {
+                    var option = document.createElement('option');
+                    option.value = profile.id;
+                    option.textContent = profile.name + (profile.is_preset ? '' : ' (custom)');
+                    select.appendChild(option);
+                });
+
+                select.value = selectedId || '';
+            }
+
             function loadProfiles() {
                 var status = document.querySelector('#ProfilesStatus');
                 status.textContent = 'Loading...';
@@ -386,6 +418,7 @@
                     dataType: 'json'
                 }).then(function (result) {
                     renderProfilesList(result.profiles);
+                    populateDefaultProfileSelect(result.profiles, VrcShareConfig.defaultQualityProfile);
                     status.textContent = result.profiles.length + ' profile(s) loaded from the proxy.';
                 }).catch(function (err) {
                     status.textContent = 'Could not load profiles from the proxy: '
@@ -469,6 +502,16 @@
                         document.querySelector('#AdminApiKey').value = config.AdminApiKey || '';
                         document.querySelector('#DefaultTtlSeconds').value = config.DefaultTtlSeconds || 86400;
                         document.querySelector('#DisableScriptInjectionMiddleware').checked = !!config.DisableScriptInjectionMiddleware;
+                        VrcShareConfig.defaultQualityProfile = config.DefaultQualityProfile || '';
+                        if (config.DefaultQualityProfile) {
+                            // Placeholder until the full list loads below (or forever, if not paired yet)
+                            var placeholder = document.createElement('option');
+                            placeholder.value = config.DefaultQualityProfile;
+                            placeholder.textContent = config.DefaultQualityProfile + ' (saved)';
+                            document.querySelector('#DefaultQualityProfile').appendChild(placeholder);
+                            document.querySelector('#DefaultQualityProfile').value = config.DefaultQualityProfile;
+                        }
+
                         updatePairStatus(config);
                         Dashboard.hideLoadingMsg();
 
@@ -491,6 +534,8 @@
                         config.AdminApiKey = document.querySelector('#AdminApiKey').value;
                         config.DefaultTtlSeconds = parseInt(document.querySelector('#DefaultTtlSeconds').value, 10) || 86400;
                         config.DisableScriptInjectionMiddleware = document.querySelector('#DisableScriptInjectionMiddleware').checked;
+                        config.DefaultQualityProfile = document.querySelector('#DefaultQualityProfile').value;
+                        VrcShareConfig.defaultQualityProfile = config.DefaultQualityProfile;
                         ApiClient.updatePluginConfiguration(VrcShareConfig.pluginUniqueId, config).then(function (result) {
                             updatePairStatus(config);
                             Dashboard.processPluginConfigurationUpdateResult(result);

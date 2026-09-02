@@ -33,4 +33,12 @@ public class PluginConfiguration : BasePluginConfiguration
     /// interferes with another plugin's own index.html injection.
     /// </summary>
     public bool DisableScriptInjectionMiddleware { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets the ID of the quality profile (built-in preset or custom,
+    /// see the proxy's /profiles) used when minting share links, unless
+    /// overridden per-call. Empty means fall back to the proxy's own default
+    /// ("high").
+    /// </summary>
+    public string DefaultQualityProfile { get; set; } = string.Empty;
 }
