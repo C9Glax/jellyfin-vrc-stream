@@ -98,6 +98,34 @@
         }
     }
 
+    // Cached admin-status lookup, shared across every addButtonIfNeeded()
+    // invocation. The MutationObserver below can fire many times during a
+    // single in-place episode transition, and jellyfin-web commonly aborts
+    // in-flight ajax requests when a view transition happens - if each
+    // invocation issued its own getCurrentUser() call, one landing inside
+    // an abort window would reject, get swallowed by the catch() below, and
+    // never retry once the DOM settled, leaving the button permanently
+    // missing. Resolving this once and caching it means later invocations
+    // in the same burst (or later bursts) just read the cached result
+    // synchronously instead of racing another ajax call.
+    var isAdminPromise = null;
+
+    function getIsAdmin() {
+        if (isAdminPromise) {
+            return isAdminPromise;
+        }
+        if (!window.ApiClient || typeof window.ApiClient.getCurrentUser !== 'function') {
+            return Promise.resolve(false);
+        }
+        isAdminPromise = window.ApiClient.getCurrentUser().then(function (user) {
+            return !!(user && user.Policy && user.Policy.IsAdministrator);
+        }).catch(function () {
+            isAdminPromise = null;
+            return false;
+        });
+        return isAdminPromise;
+    }
+
     function addButtonIfNeeded() {
         if (!isDetailsPage()) {
             return;
@@ -126,12 +154,8 @@
             existing.parentNode.removeChild(existing);
         }
 
-        if (!window.ApiClient || typeof window.ApiClient.getCurrentUser !== 'function') {
-            return;
-        }
-
-        window.ApiClient.getCurrentUser().then(function (user) {
-            if (!user || !user.Policy || !user.Policy.IsAdministrator) {
+        getIsAdmin().then(function (isAdmin) {
+            if (!isAdmin) {
                 return;
             }
             // The details view can be torn down and rebuilt - or navigated
