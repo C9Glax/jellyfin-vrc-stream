@@ -79,6 +79,122 @@
                             <span>Save</span>
                         </button>
                     </div>
+
+                    <div class="verticalSection">
+                        <h2>Caching</h2>
+                        <p>
+                            Cache/timeout settings live on the proxy and take effect immediately
+                            (changes persist across proxy restarts). Requires pairing above.
+                        </p>
+                        <div id="CachingStatus" class="fieldDescription">Not loaded yet.</div>
+
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="StreamIdleTimeout">Stream idle timeout (seconds)</label>
+                            <input id="StreamIdleTimeout" type="number" min="0" is="emby-input" />
+                            <div class="fieldDescription">Cleanup streams idle for this many seconds (0 = disable).</div>
+                        </div>
+
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="LockedStreamIdleTimeout">Locked stream idle timeout (seconds)</label>
+                            <input id="LockedStreamIdleTimeout" type="number" min="0" is="emby-input" />
+                            <div class="fieldDescription">Same, but for streams locked to stay warm (see /streams/{key}/lock).</div>
+                        </div>
+
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="CleanupInterval">Cleanup interval (seconds)</label>
+                            <input id="CleanupInterval" type="number" min="0" is="emby-input" />
+                            <div class="fieldDescription">
+                                Run cleanup every N seconds (0 = disable). Note: switching this from 0 to a
+                                positive value here needs a proxy restart to take effect - the cleanup task
+                                itself only starts once at proxy startup.
+                            </div>
+                        </div>
+
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="MaxCacheSizeMb">Max cache size (MB)</label>
+                            <input id="MaxCacheSizeMb" type="number" min="0" is="emby-input" />
+                            <div class="fieldDescription">Max cache size in MB (0 = disable size-based cleanup).</div>
+                        </div>
+
+                        <div>
+                            <button id="SaveCachingButton" is="emby-button" type="button" class="raised button-submit block emby-button">
+                                <span>Save caching settings to proxy</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h2>Quality Profiles</h2>
+                        <p>
+                            Encoding is configured as named quality profiles on the proxy. Built-in
+                            presets are read-only; add, edit or delete custom profiles below.
+                        </p>
+                        <div id="ProfilesStatus" class="fieldDescription">Not loaded yet.</div>
+                        <div id="ProfilesList"></div>
+
+                        <div class="verticalSection">
+                            <h3 id="ProfileFormTitle">Add custom profile</h3>
+
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="ProfileId">ID</label>
+                                <input id="ProfileId" type="text" is="emby-input" />
+                                <div class="fieldDescription">Unique identifier, e.g. "my-vr-profile". Cannot be changed once created.</div>
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="ProfileName">Name</label>
+                                <input id="ProfileName" type="text" is="emby-input" />
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="ProfileDescription">Description</label>
+                                <input id="ProfileDescription" type="text" is="emby-input" />
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="ProfileVideoBitrate">Video bitrate (bits/sec)</label>
+                                <input id="ProfileVideoBitrate" type="number" min="1" is="emby-input" />
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="ProfileAudioBitrate">Audio bitrate (bits/sec)</label>
+                                <input id="ProfileAudioBitrate" type="number" min="1" is="emby-input" />
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="ProfileMaxStreamingBitrate">Max streaming bitrate (bits/sec)</label>
+                                <input id="ProfileMaxStreamingBitrate" type="number" min="1" is="emby-input" />
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="ProfileMaxWidth">Max width</label>
+                                <input id="ProfileMaxWidth" type="number" min="1" is="emby-input" />
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="ProfileMaxHeight">Max height</label>
+                                <input id="ProfileMaxHeight" type="number" min="1" is="emby-input" />
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="ProfileMaxFramerate">Max framerate</label>
+                                <input id="ProfileMaxFramerate" type="number" min="1" is="emby-input" />
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="ProfileH264Profile">H.264 profile</label>
+                                <input id="ProfileH264Profile" type="text" is="emby-input" placeholder="baseline / main / high" />
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="ProfileH264Level">H.264 level</label>
+                                <input id="ProfileH264Level" type="text" is="emby-input" placeholder="41" />
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="ProfileMaxRefFrames">Max reference frames</label>
+                                <input id="ProfileMaxRefFrames" type="number" min="1" is="emby-input" />
+                            </div>
+
+                            <div>
+                                <button id="SaveProfileButton" is="emby-button" type="button" class="raised button-submit block emby-button">
+                                    <span>Save custom profile</span>
+                                </button>
+                                <button id="CancelEditProfileButton" is="emby-button" type="button" class="raised button-cancel block emby-button" hidden>
+                                    <span>Cancel edit</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </form>
             </div>
         </div>
@@ -113,6 +229,10 @@
                     updatePairStatus(config);
                     Dashboard.hideLoadingMsg();
                     Dashboard.alert(action + ' succeeded.');
+                    if (config.AdminApiKey) {
+                        loadCachingSettings();
+                        loadProfiles();
+                    }
                 }).catch(function (err) {
                     Dashboard.hideLoadingMsg();
                     Dashboard.alert(action + ' failed: ' + (err && err.statusText ? err.statusText : 'see server log'));
@@ -126,6 +246,221 @@
                 callPairEndpoint('Repair');
             });
 
+            // --- Caching (proxy /settings) ---
+
+            function loadCachingSettings() {
+                var status = document.querySelector('#CachingStatus');
+                status.textContent = 'Loading...';
+                return ApiClient.ajax({
+                    type: 'GET',
+                    url: ApiClient.getUrl('VrcShare/Settings'),
+                    dataType: 'json'
+                }).then(function (settings) {
+                    document.querySelector('#StreamIdleTimeout').value = settings.stream_idle_timeout;
+                    document.querySelector('#LockedStreamIdleTimeout').value = settings.locked_stream_idle_timeout;
+                    document.querySelector('#CleanupInterval').value = settings.cleanup_interval;
+                    document.querySelector('#MaxCacheSizeMb').value = settings.max_cache_size_mb;
+                    status.textContent = 'Loaded current settings from the proxy.';
+                }).catch(function (err) {
+                    status.textContent = 'Could not load settings from the proxy: '
+                        + (err && err.statusText ? err.statusText : 'see server log');
+                });
+            }
+
+            document.querySelector('#SaveCachingButton').addEventListener('click', function () {
+                var status = document.querySelector('#CachingStatus');
+                var payload = {
+                    stream_idle_timeout: parseInt(document.querySelector('#StreamIdleTimeout').value, 10) || 0,
+                    locked_stream_idle_timeout: parseInt(document.querySelector('#LockedStreamIdleTimeout').value, 10) || 0,
+                    cleanup_interval: parseInt(document.querySelector('#CleanupInterval').value, 10) || 0,
+                    max_cache_size_mb: parseInt(document.querySelector('#MaxCacheSizeMb').value, 10) || 0
+                };
+                Dashboard.showLoadingMsg();
+                ApiClient.ajax({
+                    type: 'PUT',
+                    url: ApiClient.getUrl('VrcShare/Settings'),
+                    data: JSON.stringify(payload),
+                    contentType: 'application/json',
+                    dataType: 'json'
+                }).then(function () {
+                    Dashboard.hideLoadingMsg();
+                    status.textContent = 'Saved to the proxy.';
+                }).catch(function (err) {
+                    Dashboard.hideLoadingMsg();
+                    Dashboard.alert('Failed to save caching settings: ' + (err && err.statusText ? err.statusText : 'see server log'));
+                });
+            });
+
+            // --- Quality Profiles (proxy /profiles) ---
+
+            var profileFields = [
+                'id', 'name', 'description', 'video_bitrate', 'audio_bitrate', 'max_streaming_bitrate',
+                'max_width', 'max_height', 'max_framerate', 'h264_profile', 'h264_level', 'max_ref_frames'
+            ];
+            var editingProfileId = null;
+
+            function resetProfileForm() {
+                editingProfileId = null;
+                document.querySelector('#ProfileFormTitle').textContent = 'Add custom profile';
+                document.querySelector('#ProfileId').disabled = false;
+                profileFields.forEach(function (field) {
+                    document.querySelector('#Profile' + toPascalCase(field)).value = '';
+                });
+                document.querySelector('#CancelEditProfileButton').hidden = true;
+            }
+
+            function toPascalCase(snakeCase) {
+                return snakeCase.replace(/(^|_)([a-z])/g, function (_, __, c) { return c.toUpperCase(); });
+            }
+
+            function startEditProfile(profile) {
+                editingProfileId = profile.id;
+                document.querySelector('#ProfileFormTitle').textContent = 'Edit profile: ' + profile.name;
+                document.querySelector('#ProfileId').disabled = true;
+                profileFields.forEach(function (field) {
+                    document.querySelector('#Profile' + toPascalCase(field)).value = profile[field];
+                });
+                document.querySelector('#CancelEditProfileButton').hidden = false;
+            }
+
+            function renderProfilesList(profiles) {
+                var container = document.querySelector('#ProfilesList');
+                container.innerHTML = '';
+                var table = document.createElement('table');
+                table.className = 'detailTable';
+                var header = document.createElement('tr');
+                ['Name', 'Resolution', 'Video bitrate', 'Type', ''].forEach(function (label) {
+                    var th = document.createElement('th');
+                    th.textContent = label;
+                    header.appendChild(th);
+                });
+                table.appendChild(header);
+
+                profiles.forEach(function (profile) {
+                    var row = document.createElement('tr');
+
+                    var nameCell = document.createElement('td');
+                    nameCell.textContent = profile.name + ' (' + profile.id + ')';
+                    row.appendChild(nameCell);
+
+                    var resCell = document.createElement('td');
+                    resCell.textContent = profile.max_width + 'x' + profile.max_height + '@' + profile.max_framerate;
+                    row.appendChild(resCell);
+
+                    var bitrateCell = document.createElement('td');
+                    bitrateCell.textContent = Math.round(profile.video_bitrate / 1000000) + ' Mbps';
+                    row.appendChild(bitrateCell);
+
+                    var typeCell = document.createElement('td');
+                    typeCell.textContent = profile.is_preset ? 'Built-in' : 'Custom';
+                    row.appendChild(typeCell);
+
+                    var actionsCell = document.createElement('td');
+                    if (!profile.is_preset) {
+                        var editButton = document.createElement('button');
+                        editButton.type = 'button';
+                        editButton.textContent = 'Edit';
+                        editButton.addEventListener('click', function () { startEditProfile(profile); });
+                        actionsCell.appendChild(editButton);
+
+                        var deleteButton = document.createElement('button');
+                        deleteButton.type = 'button';
+                        deleteButton.textContent = 'Delete';
+                        deleteButton.addEventListener('click', function () { deleteProfile(profile.id); });
+                        actionsCell.appendChild(deleteButton);
+                    }
+
+                    row.appendChild(actionsCell);
+                    table.appendChild(row);
+                });
+
+                container.appendChild(table);
+            }
+
+            function loadProfiles() {
+                var status = document.querySelector('#ProfilesStatus');
+                status.textContent = 'Loading...';
+                return ApiClient.ajax({
+                    type: 'GET',
+                    url: ApiClient.getUrl('VrcShare/Profiles'),
+                    dataType: 'json'
+                }).then(function (result) {
+                    renderProfilesList(result.profiles);
+                    status.textContent = result.profiles.length + ' profile(s) loaded from the proxy.';
+                }).catch(function (err) {
+                    status.textContent = 'Could not load profiles from the proxy: '
+                        + (err && err.statusText ? err.statusText : 'see server log');
+                });
+            }
+
+            function deleteProfile(profileId) {
+                Dashboard.confirm('Delete custom profile "' + profileId + '"? This cannot be undone.', 'Delete Profile', function (confirmed) {
+                    if (!confirmed) {
+                        return;
+                    }
+
+                    Dashboard.showLoadingMsg();
+                    ApiClient.ajax({
+                        type: 'DELETE',
+                        url: ApiClient.getUrl('VrcShare/Profiles/' + encodeURIComponent(profileId)),
+                        dataType: 'json'
+                    }).then(function () {
+                        Dashboard.hideLoadingMsg();
+                        if (editingProfileId === profileId) {
+                            resetProfileForm();
+                        }
+
+                        return loadProfiles();
+                    }).catch(function (err) {
+                        Dashboard.hideLoadingMsg();
+                        Dashboard.alert('Failed to delete profile: ' + (err && err.statusText ? err.statusText : 'see server log'));
+                    });
+                });
+            }
+
+            document.querySelector('#SaveProfileButton').addEventListener('click', function () {
+                var profile = {
+                    id: document.querySelector('#ProfileId').value.trim(),
+                    name: document.querySelector('#ProfileName').value.trim(),
+                    description: document.querySelector('#ProfileDescription').value.trim(),
+                    video_bitrate: parseInt(document.querySelector('#ProfileVideoBitrate').value, 10) || 0,
+                    audio_bitrate: parseInt(document.querySelector('#ProfileAudioBitrate').value, 10) || 0,
+                    max_streaming_bitrate: parseInt(document.querySelector('#ProfileMaxStreamingBitrate').value, 10) || 0,
+                    max_width: parseInt(document.querySelector('#ProfileMaxWidth').value, 10) || 0,
+                    max_height: parseInt(document.querySelector('#ProfileMaxHeight').value, 10) || 0,
+                    max_framerate: parseInt(document.querySelector('#ProfileMaxFramerate').value, 10) || 0,
+                    h264_profile: document.querySelector('#ProfileH264Profile').value.trim(),
+                    h264_level: document.querySelector('#ProfileH264Level').value.trim(),
+                    max_ref_frames: parseInt(document.querySelector('#ProfileMaxRefFrames').value, 10) || 0,
+                    is_preset: false
+                };
+
+                if (!profile.id || !profile.name) {
+                    Dashboard.alert('ID and Name are required.');
+                    return;
+                }
+
+                Dashboard.showLoadingMsg();
+                ApiClient.ajax({
+                    type: editingProfileId ? 'PUT' : 'POST',
+                    url: ApiClient.getUrl('VrcShare/Profiles' + (editingProfileId ? '/' + encodeURIComponent(editingProfileId) : '')),
+                    data: JSON.stringify(profile),
+                    contentType: 'application/json',
+                    dataType: 'json'
+                }).then(function () {
+                    Dashboard.hideLoadingMsg();
+                    resetProfileForm();
+                    return loadProfiles();
+                }).catch(function (err) {
+                    Dashboard.hideLoadingMsg();
+                    Dashboard.alert('Failed to save profile: ' + (err && err.statusText ? err.statusText : 'see server log'));
+                });
+            });
+
+            document.querySelector('#CancelEditProfileButton').addEventListener('click', function () {
+                resetProfileForm();
+            });
+
             document.querySelector('#VrcShareConfigPage')
                 .addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
@@ -136,6 +471,15 @@
                         document.querySelector('#DisableScriptInjectionMiddleware').checked = !!config.DisableScriptInjectionMiddleware;
                         updatePairStatus(config);
                         Dashboard.hideLoadingMsg();
+
+                        resetProfileForm();
+                        if (config.AdminApiKey) {
+                            loadCachingSettings();
+                            loadProfiles();
+                        } else {
+                            document.querySelector('#CachingStatus').textContent = 'Pair with the proxy first.';
+                            document.querySelector('#ProfilesStatus').textContent = 'Pair with the proxy first.';
+                        }
                     });
                 });
 
