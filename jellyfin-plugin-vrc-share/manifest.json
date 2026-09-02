@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.2.1.0",
+        "changelog": "See https://github.com/C9Glax/jellyfin-vrc-stream/releases/tag/v1.2.1 for details.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/C9Glax/jellyfin-vrc-stream/releases/download/v1.2.1/Jellyfin.Plugin.VrcShare_1.2.1.0.zip",
+        "checksum": "62cb8063aab5c4811340bb8469744577",
+        "timestamp": "2026-09-02T10:09:53"
+      },
+      {
         "version": "1.2.0.0",
         "changelog": "See https://github.com/C9Glax/jellyfin-vrc-stream/releases/tag/v1.2.0 for details.",
         "targetAbi": "10.11.0.0",
