@@ -31,7 +31,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "9.0.x"
+          dotnet-version: "10.0.x"
 
       - name: Extract version from tag
         id: version
@@ -58,8 +58,8 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           ZIP_NAME="Jellyfin.Plugin.VrcShare_${VERSION}.zip"
-          (cd Jellyfin.Plugin.VrcShare/bin/Release/net9.0 && zip "$ZIP_NAME" Jellyfin.Plugin.VrcShare.dll)
-          mv "Jellyfin.Plugin.VrcShare/bin/Release/net9.0/$ZIP_NAME" "./$ZIP_NAME"
+          (cd Jellyfin.Plugin.VrcShare/bin/Release/net10.0 && zip "$ZIP_NAME" Jellyfin.Plugin.VrcShare.dll)
+          mv "Jellyfin.Plugin.VrcShare/bin/Release/net10.0/$ZIP_NAME" "./$ZIP_NAME"
           CHECKSUM=$(md5sum "$ZIP_NAME" | cut -d ' ' -f1)
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
@@ -95,7 +95,7 @@ jobs:
           entry = {
               "version": os.environ["VERSION"],
               "changelog": f"See https://github.com/{repo}/releases/tag/{tag} for details.",
-              "targetAbi": "10.11.0.0",
+              "targetAbi": "12.0.0.0",
               "sourceUrl": "https://github.com/{repo}/releases/download/{tag}/{zip}".format(
                   repo=repo,
                   tag=tag,
