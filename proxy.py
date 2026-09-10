@@ -11,6 +11,7 @@ import time
 import shutil
 import secrets
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional, Dict, List
 from fastapi import FastAPI, HTTPException, Query, Request, Body, WebSocket, WebSocketDisconnect, Depends
@@ -189,6 +190,18 @@ BUILTIN_PROFILES: Dict[str, QualityProfile] = {
 
 
 app = FastAPI(title="Jellyfin HLS Proxy")
+
+# Dedicated executor for blocking calls to Jellyfin (playlist/segment fetches).
+# Kept separate from asyncio's default thread pool so that a Jellyfin transcode
+# hanging on one stream (e.g. a codec it struggles to transcode) can't starve
+# unrelated streams/admin endpoints out of a worker thread for up to their
+# entire fetch timeout.
+jellyfin_executor = ThreadPoolExecutor(max_workers=64, thread_name_prefix="jellyfin-fetch")
+
+
+async def run_jellyfin_fetch(func):
+    """Run a blocking Jellyfin fetch on the dedicated executor"""
+    return await asyncio.get_running_loop().run_in_executor(jellyfin_executor, func)
 
 
 class ConnectionManager:
@@ -951,13 +964,21 @@ async def fetch_and_cache(url: str, cache_path: Path, timeout: float = 60.0) -> 
         return cache_path
 
     try:
-        # Run blocking I/O in thread pool to avoid blocking event loop
-        return await asyncio.to_thread(_blocking_fetch)
+        # Run blocking I/O on the dedicated Jellyfin executor to avoid blocking
+        # the event loop (and to avoid starving unrelated requests, see
+        # jellyfin_executor above)
+        return await run_jellyfin_fetch(_blocking_fetch)
     except urllib.error.HTTPError as e:
+        cache_path.unlink(missing_ok=True)
         raise HTTPException(status_code=e.code, detail=f"Jellyfin error: {e.reason}")
     except urllib.error.URLError as e:
+        cache_path.unlink(missing_ok=True)
         raise HTTPException(status_code=504, detail=f"Connection timeout: {e.reason}")
     except Exception as e:
+        # Any failure partway through writing leaves a truncated file behind;
+        # remove it so the next request retries the fetch instead of silently
+        # serving corrupt/incomplete segment data forever.
+        cache_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"Failed to fetch content: {e}")
 
 
@@ -971,6 +992,18 @@ def get_client_ip(request: Request) -> str:
 
     # Fall back to direct connection IP
     return request.client.host if request.client else 'unknown'
+
+
+def is_valid_playlist(content: bytes) -> bool:
+    """Check that a Jellyfin HLS playlist response looks usable before caching it.
+
+    A crashed/failed transcode start can come back as a 200 OK with an empty
+    or truncated body instead of a proper HTTP error, so a header check alone
+    isn't enough - we also require it to reference at least one segment.
+    """
+    if not content or not content.startswith(b'#EXTM3U'):
+        return False
+    return b'.ts' in content or b'.m3u8' in content[8:]
 
 
 def rewrite_playlist_vod(content: bytes, media_id: str, auth_query: str = "") -> str:
@@ -1380,16 +1413,23 @@ async def _get_stream_playlist(request: Request, m: str, audio: Optional[int], s
         jellyfin_url = active_streams[stream_key]['jellyfin_url']
 
         try:
-            # Run blocking urllib call in thread pool to avoid blocking event loop
             def fetch_playlist():
                 with urllib.request.urlopen(jellyfin_request(jellyfin_url), timeout=60.0) as response:
                     return response.read()
 
-            content = await asyncio.to_thread(fetch_playlist)
-            # Cache the playlist content to avoid creating multiple Jellyfin sessions
-            active_streams[stream_key]['playlist_content'] = content
+            content = await run_jellyfin_fetch(fetch_playlist)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to fetch playlist: {e}")
+
+        if not is_valid_playlist(content):
+            # Jellyfin returned something (e.g. an empty/error body from a
+            # transcode that failed to start) that isn't a usable playlist.
+            # Don't cache it - let the next request retry from scratch
+            # instead of permanently serving this broken response.
+            raise HTTPException(status_code=502, detail="Jellyfin returned an invalid/empty playlist (transcode may have failed to start)")
+
+        # Cache the playlist content to avoid creating multiple Jellyfin sessions
+        active_streams[stream_key]['playlist_content'] = content
 
     # Store session info (but don't overwrite if already set by prewarm!)
     if content and 'session_id' not in active_streams[stream_key]:
@@ -1506,7 +1546,7 @@ async def get_vod_segment(media_id: str, segment_path: str, request: Request):
                 with urllib.request.urlopen(jellyfin_request(segment_url), timeout=60.0) as response:
                     return response.read()
 
-            content = await asyncio.to_thread(fetch_playlist)
+            content = await run_jellyfin_fetch(fetch_playlist)
             rewritten = rewrite_playlist_vod(content, media_id, auth_query)
 
             return PlainTextResponse(
@@ -1799,7 +1839,7 @@ async def prewarm_worker(stream_key: str):
             with urllib.request.urlopen(jellyfin_request(jellyfin_url), timeout=120.0) as response:
                 return response.read()
 
-        content = await asyncio.to_thread(fetch_playlist)
+        content = await run_jellyfin_fetch(fetch_playlist)
 
         # Check if cancelled after playlist fetch
         if stream_key not in active_streams or active_streams[stream_key].get('prewarm_status') == 'cancelled':
@@ -1809,6 +1849,11 @@ async def prewarm_worker(stream_key: str):
                 active_streams[stream_key]['prewarm_error'] = None
                 await broadcast_streams_update()
             return
+
+        if not is_valid_playlist(content):
+            # Don't cache an invalid/empty response - surface it as a prewarm
+            # error instead of silently poisoning the stream for every viewer
+            raise Exception("Jellyfin returned an invalid/empty playlist (transcode may have failed to start)")
 
         # Cache the playlist content to avoid creating multiple Jellyfin sessions
         active_streams[stream_key]['playlist_content'] = content
