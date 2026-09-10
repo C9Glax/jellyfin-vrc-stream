@@ -12,13 +12,14 @@ import shutil
 import secrets
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional, Dict, List
 from fastapi import FastAPI, HTTPException, Query, Request, Body, WebSocket, WebSocketDisconnect, Depends
 from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -40,8 +41,7 @@ class Settings(BaseSettings):
     public_base_url: str = ""  # External base URL used to build share links (falls back to request base URL)
     default_share_ttl_seconds: int = 86400  # 24 hours
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env")
 
 
 settings = Settings()
@@ -612,8 +612,8 @@ async def cleanup_task():
             print(f"Error in cleanup task: {e}")
 
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """Start background cleanup task and recover cached streams"""
     global custom_profiles, shares
 
@@ -672,6 +672,11 @@ async def startup_event():
         print(f"Started cleanup task (interval: {settings.cleanup_interval}s, idle timeout: {settings.stream_idle_timeout}s, locked timeout: {settings.locked_stream_idle_timeout}s, max cache: {settings.max_cache_size_mb}MB)")
     else:
         print("Cleanup task disabled (cleanup_interval=0)")
+
+    yield
+
+
+app.router.lifespan_context = lifespan
 
 
 def jellyfin_request(url: str) -> urllib.request.Request:
